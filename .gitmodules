@@ -1,3 +1,4 @@
 [submodule "third_party/DovSG"]
 	path = third_party/DovSG
 	url = https://github.com/BJHYZJ/DovSG.git
+	ignore = dirty

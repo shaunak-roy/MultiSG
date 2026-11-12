@@ -20,13 +20,13 @@ import numpy as np
 DEFAULT_URL = "tcp://67.194.38.225:8888"
 
 
-def stream_frames(url, w, h):
+def stream_frames(url, w, h, ffmpeg="ffmpeg"):
     """Yield the latest BGR frame from the ffmpeg TCP stream.
 
     A background thread drains the pipe and keeps only the newest frame, so
-    the preview never lags behind the camera.
+    the preview never lags behind the camera. `ffmpeg` is the executable to run.
     """
-    cmd = ["ffmpeg", "-fflags", "nobuffer", "-flags", "low_delay",
+    cmd = [ffmpeg, "-fflags", "nobuffer", "-flags", "low_delay",
            "-probesize", "32", "-analyzeduration", "0",
            "-i", url, "-f", "rawvideo", "-pix_fmt", "bgr24", "-"]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE,
