@@ -23,11 +23,15 @@ command -v curl >/dev/null || {
     exit 1
 }
 
-# Accept a recorded frames folder (record_room.py run: <run>/frames, frames.csv, scans/),
-# a local video path, or a direct video download URL.
-#   ./setup-rgbd.sh ~/rob535/data/room_run1/frames   -> ViT-L metric depth + lidar/floor
-#                                                       calibration for every frame
-#   ./setup-rgbd.sh room_run1.mp4                     -> uncalibrated ViT-S depth (old path)
+# Accepts a recorded run (record_room.py: <run>/frames/, frames.csv, scans/) in any form:
+#   ./setup-rgbd.sh room_run1                  name of a run zip on the repo's "data" release
+#                                              (downloaded once to work/data/)
+#   ./setup-rgbd.sh ~/Downloads/new_room.zip   a run zip (local file or https://...zip)
+#   ./setup-rgbd.sh ~/rob535/data/room_run1    a run folder (or its frames/ folder)
+#     -> ViT-L metric depth + lidar/floor calibration for every frame, then a frame check
+#   ./setup-rgbd.sh room_run1.mp4              a video -> uncalibrated ViT-S depth (old path)
+# New room: zip the run folder (frames/, frames.csv, scans/, info.txt), add the zip to the
+# "data" release on GitHub, then ./setup-rgbd.sh <zip name without .zip>.
 VIDEO="${1:-}"
 ENCODER="${ENCODER:-vitl}"   # frames mode: vits | vitb | vitl
 
@@ -114,6 +118,43 @@ if [[ ! -f "$WEIGHTS" ]]; then
     mv "${WEIGHTS}.download" "$WEIGHTS"
 fi
 
+# ---- recorded run given as a zip: a bare name (published on the "data" release), a .zip
+# URL, or a local .zip. Downloaded/unpacked once into work/data/ (git-ignored).
+DATA_RELEASE="https://github.com/shaunak-roy/MultiSG/releases/download/data"
+if [[ ! -e "$VIDEO" && "$VIDEO" =~ ^[A-Za-z0-9_.-]+$ && ! "$VIDEO" =~ \.(mp4|mov|avi|mkv|webm)$ ]]; then
+    VIDEO="$DATA_RELEASE/${VIDEO%.zip}.zip"
+    echo "Using published run: $VIDEO"
+fi
+if [[ "$VIDEO" =~ ^https?://.*\.zip$ ]]; then
+    mkdir -p work/data
+    ZIP="work/data/$(basename "$VIDEO")"
+    if [[ ! -f "$ZIP" ]]; then
+        curl -fL --retry 5 --retry-all-errors -C - "$VIDEO" -o "${ZIP}.download" || {
+            echo "Download failed: $VIDEO"
+            echo "(is the zip uploaded to the 'data' release, with exactly this name?)"
+            exit 1
+        }
+        mv "${ZIP}.download" "$ZIP"
+    fi
+    VIDEO="$ZIP"
+fi
+if [[ -f "$VIDEO" && "$VIDEO" == *.zip ]]; then
+    DEST="work/data/$(basename "${VIDEO%.zip}")"
+    if [[ ! -d "$DEST" ]]; then
+        echo "Unpacking $VIDEO -> $DEST"
+        rm -rf "${DEST}.tmp" && mkdir -p "${DEST}.tmp"
+        uv run python -m zipfile -e "$VIDEO" "${DEST}.tmp"
+        mv "${DEST}.tmp" "$DEST"
+    fi
+    CSV="$(find "$DEST" -maxdepth 3 -name frames.csv | head -1)"
+    [[ -n "$CSV" ]] || { echo "No frames.csv inside $VIDEO: not a recorded run zip."; exit 1; }
+    VIDEO="$(dirname "$CSV")/frames"
+fi
+# a run folder (frames/ + frames.csv inside) works as well as the frames folder itself
+if [[ -d "$VIDEO/frames" && -f "$VIDEO/frames.csv" ]]; then
+    VIDEO="$VIDEO/frames"
+fi
+
 # Frames folder: metric depth on every frame, then per-frame calibration with the run's
 # lidar scans + odometry (frames.csv, scans/) and config/mbot_mount.yaml.
 if [[ -d "$VIDEO" ]]; then
@@ -139,6 +180,8 @@ if [[ -d "$VIDEO" ]]; then
     echo "Raw network depth:   $OUT/depth_mm/"
     echo "Calibrated depth:    $OUT/calibrated/depth_mm/   (16-bit mm, same names as the photos)"
     echo "Side-by-side views:  $OUT/calibrated/preview/"
+    echo "Check any frame later:"
+    echo "  uv run python -m multi_sg.check_frame --run \"$RUN_DIR\""
 
     # Spot-check: open any frame (photo + lidar dots, raw depth, calibrated depth).
     # Skipped without a terminal or a display (e.g. over ssh).

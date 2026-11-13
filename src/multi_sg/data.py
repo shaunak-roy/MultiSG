@@ -28,7 +28,12 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[2]
 DEFAULT_MOUNT = REPO / "config" / "mbot_mount.yaml"
-DEFAULT_RUN = Path("~/rob535/data/room_run1").expanduser()
+# room_run1: the recording folder on Sid's laptop, else the copy setup-rgbd unpacks from the
+# "data" release zip (work/data/room_run1/room_run1)
+DEFAULT_RUN = next((p for p in (Path("~/rob535/data/room_run1").expanduser(),
+                                REPO / "work" / "data" / "room_run1" / "room_run1")
+                    if (p / "frames.csv").is_file()),
+                   Path("~/rob535/data/room_run1").expanduser())
 
 # frames whose scan was taken while turning faster than this (yaw change over the
 # photo-scan time gap) are flagged; their lidar shouldn't be used for calibration

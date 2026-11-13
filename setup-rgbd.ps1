@@ -1,8 +1,15 @@
 # Windows twin of setup-rgbd.sh (CAEN lab PCs: no admin, profile wiped at logout, so this
 # installs everything from scratch each session). Run from the MultiSG repository root:
 #
-#   powershell -ExecutionPolicy Bypass -File .\setup-rgbd.ps1 C:\data\room_run1\frames
+#   powershell -ExecutionPolicy Bypass -File .\setup-rgbd.ps1 room_run1
+#       name of a run zip on the repo's "data" release (downloaded once to work\data\)
+#   powershell -ExecutionPolicy Bypass -File .\setup-rgbd.ps1 C:\Downloads\new_room.zip
+#       a run zip (local file or https://...zip)
+#   powershell -ExecutionPolicy Bypass -File .\setup-rgbd.ps1 C:\data\room_run1
+#       a run folder (or its frames\ folder)
 #       -> ViT-L metric depth + lidar/floor calibration for every frame, then a frame check
+#   New room: zip the run folder (frames\, frames.csv, scans\, info.txt), add the zip to the
+#   "data" release on GitHub, then run this with the zip name (without .zip).
 #   powershell -ExecutionPolicy Bypass -File .\setup-rgbd.ps1 C:\data\room_run1.mp4
 #       -> uncalibrated ViT-S depth (old video path)
 #   ... -Encoder vits      smaller/faster model in frames mode
@@ -157,6 +164,42 @@ else:
     print("Using CPU; no compatible GPU backend is available")
 "@
 
+# ---------------------------------------------------------------- run given as a zip
+# Bare name (published on the "data" release), a .zip URL, or a local .zip.
+# Downloaded/unpacked once into work\data\ (git-ignored).
+$dataRelease = "https://github.com/shaunak-roy/MultiSG/releases/download/data"
+if (-not (Test-Path -LiteralPath $Video) -and $Video -match '^[A-Za-z0-9_.-]+$' -and
+    $Video -notmatch '\.(mp4|mov|avi|mkv|webm)$') {
+    $Video = "$dataRelease/$($Video -replace '\.zip$', '').zip"
+    Write-Host "Using published run: $Video"
+}
+if ($Video -match '^https?://.*\.zip$') {
+    New-Item -ItemType Directory -Force "work/data" | Out-Null
+    $zip = "work/data/$(Split-Path $Video -Leaf)"
+    try { Get-File $Video $zip }
+    catch {
+        throw "Download failed: $Video (is the zip uploaded to the 'data' release, with exactly this name?)"
+    }
+    $Video = $zip
+}
+if ((Test-Path -LiteralPath $Video -PathType Leaf) -and $Video -match '\.zip$') {
+    $dest = "work/data/$([IO.Path]::GetFileNameWithoutExtension($Video))"
+    if (-not (Test-Path $dest)) {
+        Write-Host "Unpacking $Video -> $dest"
+        if (Test-Path "$dest.tmp") { Remove-Item -Recurse -Force "$dest.tmp" }
+        New-Item -ItemType Directory -Force "$dest.tmp" | Out-Null
+        Invoke-Checked "uv" @("run", "python", "-m", "zipfile", "-e", $Video, "$dest.tmp")
+        Move-Item "$dest.tmp" $dest
+    }
+    $csv = Get-ChildItem -Path $dest -Filter frames.csv -Recurse -Depth 3 | Select-Object -First 1
+    if (-not $csv) { throw "No frames.csv inside ${Video}: not a recorded run zip." }
+    $Video = Join-Path $csv.DirectoryName "frames"
+}
+# a run folder (frames\ + frames.csv inside) works as well as the frames folder itself
+if ((Test-Path -LiteralPath "$Video/frames" -PathType Container) -and (Test-Path -LiteralPath "$Video/frames.csv")) {
+    $Video = Join-Path $Video "frames"
+}
+
 # ---------------------------------------------------------------- frames folder mode
 # Recorded run (record_room.py): <run>\frames\, <run>\frames.csv, <run>\scans\.
 if (Test-Path -LiteralPath $Video -PathType Container) {
@@ -181,9 +224,10 @@ if (Test-Path -LiteralPath $Video -PathType Container) {
     Write-Host "Raw network depth:   $out/depth_mm/"
     Write-Host "Calibrated depth:    $out/calibrated/depth_mm/   (16-bit mm, same names as the photos)"
     Write-Host "Side-by-side views:  $out/calibrated/preview/"
+    Write-Host "Check any frame later:"
+    Write-Host "  uv run python -m multi_sg.check_frame --run `"$runDir`""
 
     # Spot-check any frame (photo + lidar dots, raw depth, calibrated depth).
-    # Later: uv run python -m multi_sg.check_frame --run <run folder>
     Write-Host ""
     $answer = Read-Host "Check a frame now? [y/N]"
     if ($answer -match "^[Yy]") {
