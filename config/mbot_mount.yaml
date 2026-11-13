@@ -1,0 +1,31 @@
+# MBot sensor mounting, in the robot base frame (x forward, y left, z up), metres / degrees.
+# Origin = the point odom tracks (between the wheels, on the floor).
+#
+# Tape-measured Nov 12, robot on flat floor. Offsets from the wheel-axle centre.
+# Lidar x/y = 0 is assumed (centred), not measured. Re-render: uv run python -m multi_sg.overlay
+
+camera:
+  x: 0.0         # forward offset of the lens from the robot origin
+  y: 0.0         # left offset
+  z: 0.06975     # lens centre height above the floor (69.75 mm)
+  pitch_deg: -1.0 # tilt; positive = looking DOWN. Looks level by eye, but frame 0 says ~1 deg UP:
+                  # tag box 1.00 m ahead touches the floor at row v=312.5 ->
+                  # atan(0.06975/1.00) - atan((312.5-cy)/fy) = -0.99 deg (range -0.63..-1.05
+                  # over edge row +-1 px and box face vs centre). Provisional: refine in
+                  # step 5 from floor-vs-lidar anchor agreement over many frames.
+  yaw_deg: 0.0   # positive = turned LEFT
+
+lidar:
+  x: 0.0
+  y: 0.0
+  z: 0.1835      # middle of the spinning head above the floor (183.5 mm)
+  yaw_deg: 180.0 # lidar angle 0 points BACKWARDS. Not a guess: fitted Nov 12 by aligning
+                 # scan pairs in the world with odom (2.7 cm median vs 25 cm at yaw 0;
+                 # flat minimum 178-180 deg)
+  flip: false    # mirrored scans fit worse (3.6 cm median, 21 cm mean), so no flip
+
+intrinsics:      # 640x480 checkerboard calibration (RMS 0.88 px), no distortion model applied
+  fx: 554.3148
+  fy: 555.9327
+  cx: 312.1483
+  cy: 264.0024

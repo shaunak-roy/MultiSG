@@ -1,1 +1,7 @@
 .venv/
+
+# generated / downloaded - keep data out of git
+outputs/
+work/
+__pycache__/
+*.pyc
